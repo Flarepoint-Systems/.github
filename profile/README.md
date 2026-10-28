@@ -8,9 +8,9 @@
 </p>
 
 <p align="center">
-  <a href="https://flarepoint.nl"><img src="https://img.shields.io/badge/web-flarepoint.nl-2ee66b?style=flat-square&labelColor=111111" alt="Website" /></a>
-  <a href="mailto:inquiries@flarepoint.nl"><img src="https://img.shields.io/badge/mail-inquiries%40flarepoint.nl-2ee66b?style=flat-square&labelColor=111111" alt="Email" /></a>
-  <img src="https://img.shields.io/badge/based%20in-the%20Netherlands-2ee66b?style=flat-square&labelColor=111111" alt="Location" />
+  <a href="https://flarepoint.nl"><img src="https://img.shields.io/badge/web-flarepoint.nl-3cff8a?style=flat-square&labelColor=111111" alt="Website" /></a>
+  <a href="mailto:inquiries@flarepoint.nl"><img src="https://img.shields.io/badge/mail-inquiries%40flarepoint.nl-3cff8a?style=flat-square&labelColor=111111" alt="Email" /></a>
+  <img src="https://img.shields.io/badge/based%20in-the%20Netherlands-3cff8a?style=flat-square&labelColor=111111" alt="Location" />
 </p>
 
 ---
@@ -19,8 +19,8 @@
 
 | Project | What it does | Stack | Status |
 |---|---|---|---|
-| **[MonCOM](https://github.com/Flarepoint-Systems/fp-moncom)** | Multi-monitor command center for Windows. Define a wall of apps and dashboards once, then bring it up in one click or on boot. | Electron · React | ![Released](https://img.shields.io/badge/-released-2ee66b?style=flat-square) |
-| **[Plugin Plaza](https://github.com/Flarepoint-Systems/fp-pluginplaza)** | Small, single-purpose Claude Code plugins. Each one fixes one thing the model does that gets in your way, acting only at the edges of a task. | Claude Code · Node | ![Available](https://img.shields.io/badge/-available-2ee66b?style=flat-square) |
+| **[MonCOM](https://github.com/Flarepoint-Systems/fp-moncom)** | Multi-monitor command center for Windows. Define a wall of apps and dashboards once, then bring it up in one click or on boot. | Electron · React | ![Released](https://img.shields.io/badge/-released-3cff8a?style=flat-square) |
+| **[Plugin Plaza](https://github.com/Flarepoint-Systems/fp-pluginplaza)** | Small, single-purpose Claude Code plugins. Each one fixes one thing the model does that gets in your way, acting only at the edges of a task. | Claude Code · Node | ![Available](https://img.shields.io/badge/-available-3cff8a?style=flat-square) |
 
 ### Coming soon
 
