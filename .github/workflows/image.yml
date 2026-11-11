@@ -1,0 +1,153 @@
+# Builds a container image, pushes it to GHCR and optionally asks Portainer to roll it out.
+# Call it from a project's own workflow, after that project's tests:
+#
+#   jobs:
+#     image:
+#       needs: check
+#       permissions:
+#         contents: read
+#         packages: write
+#       uses: Flarepoint-Systems/.github/.github/workflows/image.yml@main
+#       with:
+#         dockerfile: deploy/Dockerfile
+#       secrets: inherit
+#
+# The image is pushed as ghcr.io/<owner>/<image>:<full commit sha>, and also as :main on the main branch.
+name: image
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Image name without registry or owner. Defaults to the repository name.
+        type: string
+        default: ""
+      dockerfile:
+        type: string
+        default: Dockerfile
+      context:
+        type: string
+        default: .
+      amd64:
+        description: Also build for amd64. arm64 is always built.
+        type: boolean
+        default: false
+      deploy:
+        description: After a push to main, ask Portainer to restart the app so it pulls the new image.
+        type: boolean
+        default: false
+      portainer-url:
+        description: Base URL of Portainer, reachable over the tailnet. Needed when deploy is true.
+        type: string
+        default: ""
+    secrets:
+      TS_OAUTH_CLIENT_ID:
+        required: false
+      TS_OAUTH_SECRET:
+        required: false
+      PORTAINER_WEBHOOK_ID:
+        required: false
+
+# Runs for one image queue up, so an older build can never overwrite :main after a newer one
+concurrency:
+  group: image-${{ github.repository }}-${{ inputs.image }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        arch: ${{ fromJSON(inputs.amd64 && '["arm64","amd64"]' || '["arm64"]') }}
+    # Native runners for both, so nothing is emulated
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      name: ${{ steps.name.outputs.name }}
+      short: ${{ steps.name.outputs.short }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: name
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          short="${IMAGE:-${GITHUB_REPOSITORY#*/}}"
+          # GHCR only accepts lowercase names
+          echo "short=${short,,}" >> "$GITHUB_OUTPUT"
+          echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/${short,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: linux/${{ matrix.arch }}
+          build-args: APP_VERSION=${{ github.sha }}
+          outputs: type=image,name=${{ steps.name.outputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ steps.name.outputs.short }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ steps.name.outputs.short }}-${{ matrix.arch }}
+      - env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: echo "$DIGEST" > digest
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ steps.name.outputs.short }}-${{ matrix.arch }}
+          path: digest
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    env:
+      NAME: ${{ needs.build.outputs.name }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digest-${{ needs.build.outputs.short }}-*
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: |
+          tags=(-t "$NAME:$GITHUB_SHA")
+          [[ "$GITHUB_REF" == refs/heads/main ]] && tags+=(-t "$NAME:main")
+          sources=()
+          for f in digest-*/digest; do sources+=("$NAME@$(cat "$f")"); done
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+          docker buildx imagetools inspect "$NAME:$GITHUB_SHA"
+
+  deploy:
+    needs: publish
+    if: inputs.deploy && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: tailscale/github-action@v4.4.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+      - env:
+          PORTAINER_URL: ${{ inputs.portainer-url }}
+          PORTAINER_WEBHOOK_ID: ${{ secrets.PORTAINER_WEBHOOK_ID }}
+        run: |
+          [[ "$PORTAINER_URL" == https://* ]] || { echo "portainer-url must be an https URL" >&2; exit 1; }
+          [[ "$PORTAINER_WEBHOOK_ID" =~ ^[0-9a-f-]{36}$ ]] || { echo "PORTAINER_WEBHOOK_ID must be the bare webhook id, not the URL" >&2; exit 1; }
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 -X POST \
+            "$PORTAINER_URL/api/stacks/webhooks/$PORTAINER_WEBHOOK_ID?rollout-restart=all")
+          [[ "$code" == 2* ]] || { echo "Portainer webhook answered HTTP $code" >&2; exit 1; }
